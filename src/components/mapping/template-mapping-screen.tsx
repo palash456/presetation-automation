@@ -13,13 +13,16 @@ import {
   Unlock,
 } from "lucide-react";
 import { useDeck } from "@/context/deck-context";
+import { DeckSlideReadonlyPreview } from "@/components/deck-preview/deck-slide-readonly-preview";
+import { loadTemplateLibrary } from "@/components/template-system/template-library-storage";
+import { buildEditorSlideForDeckIndex } from "@/lib/deck/helpers";
 import { ALL_TEMPLATE_IDS, TEMPLATE_CATALOG } from "./template-catalog";
 import {
   jitterScore,
   randomReasoning,
   remapAlternatives,
 } from "./mock-slides";
-import { SlideTemplatePreview } from "./slide-template-preview";
+import type { CompanyTemplate } from "@/components/template-system/company-types";
 import type { TemplateAlternative, TemplatePresetId } from "./types";
 
 function cn(...p: (string | false | undefined)[]) {
@@ -84,6 +87,30 @@ export function TemplateMappingScreen() {
     if (slides.length === 0 || !resolvedSlideId) return null;
     return slides.find((s) => s.id === resolvedSlideId) ?? slides[0]!;
   }, [slides, resolvedSlideId]);
+
+  const activeCompany = useMemo((): CompanyTemplate | null => {
+    if (!deck.activeCompanyTemplateId) return null;
+    const lib = loadTemplateLibrary();
+    return lib.find((c) => c.id === deck.activeCompanyTemplateId) ?? null;
+  }, [deck.activeCompanyTemplateId]);
+
+  const mappingPreviewSlide = useMemo(() => {
+    if (!active) return null;
+    const idx = slides.findIndex((s) => s.id === active.id);
+    if (idx < 0) return null;
+    return buildEditorSlideForDeckIndex(deck, idx, activeCompany);
+  }, [
+    active,
+    active?.assignedTemplateId,
+    active?.bullets,
+    active?.id,
+    active?.subtitle,
+    active?.title,
+    activeCompany,
+    deck,
+    deck.slideModels,
+    slides,
+  ]);
 
   const bumpPreview = useCallback(() => {
     setPreviewTick((t) => t + 1);
@@ -306,15 +333,12 @@ export function TemplateMappingScreen() {
             Applied template updates in real time
           </p>
           <div className="mapping-preview-shell w-full max-w-4xl transition-[filter,opacity] duration-300 ease-out">
-            <SlideTemplatePreview
-              templateId={active.assignedTemplateId}
-              slide={{
-                title: active.title,
-                subtitle: active.subtitle,
-                bullets: active.bullets,
-              }}
-              transitionKey={previewTick}
-            />
+            {mappingPreviewSlide ? (
+              <DeckSlideReadonlyPreview
+                slide={mappingPreviewSlide}
+                transitionKey={previewTick}
+              />
+            ) : null}
           </div>
         </section>
 

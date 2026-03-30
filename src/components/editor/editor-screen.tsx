@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDeck } from "@/context/deck-context";
+import { loadTemplateLibrary } from "@/components/template-system/template-library-storage";
 import { buildEditorSlidesFromDeck } from "@/lib/deck/helpers";
 import {
   AlignCenter,
@@ -70,26 +71,63 @@ export function EditorScreen() {
     [deck.slides],
   );
 
+  const mappingSig = useMemo(
+    () => deck.slides.map((s) => `${s.id}:${s.assignedTemplateId}`).join("|"),
+    [deck.slides],
+  );
+
+  const prevMappingSig = useRef<string | undefined>(undefined);
+  const prevCompanyId = useRef<string | null | undefined>(undefined);
+
   useEffect(() => {
     const id = requestAnimationFrame(() => {
       if (deck.slides.length === 0) {
         setSlides([]);
         return;
       }
+      const lib = loadTemplateLibrary();
+      const company =
+        lib.find((c) => c.id === deck.activeCompanyTemplateId) ?? null;
+
+      const mappingChanged =
+        prevMappingSig.current !== undefined &&
+        prevMappingSig.current !== mappingSig;
+      prevMappingSig.current = mappingSig;
+
+      const companyChanged =
+        prevCompanyId.current !== undefined &&
+        prevCompanyId.current !== (deck.activeCompanyTemplateId ?? null);
+      prevCompanyId.current = deck.activeCompanyTemplateId ?? null;
+
       const lenOk =
         deck.editorSlides && deck.editorSlides.length === deck.slides.length;
-      const initial = lenOk
-        ? deepClone(deck.editorSlides!)
-        : buildEditorSlidesFromDeck(deck.slides);
+
+      const shouldRebuild =
+        !lenOk || mappingChanged || companyChanged;
+
+      const initial = shouldRebuild
+        ? buildEditorSlidesFromDeck(deck.slides, company)
+        : deepClone(deck.editorSlides!);
+
       setActiveIndex((i) => Math.min(i, Math.max(0, initial.length - 1)));
       setSlides(initial);
       setPast([]);
       setFuture([]);
       setSelectedElementId(null);
+
+      if (shouldRebuild) {
+        pushEditorSlides(initial);
+      }
     });
     return () => cancelAnimationFrame(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- sync when outline signature or layout invalidation bumps
-  }, [deckSlideSig, deck.layoutGeneration]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- avoid deck.editorSlides in deps (feedback loop)
+  }, [
+    deckSlideSig,
+    deck.layoutGeneration,
+    mappingSig,
+    deck.activeCompanyTemplateId,
+    pushEditorSlides,
+  ]);
 
   const slidesRef = useRef(slides);
   useEffect(() => {

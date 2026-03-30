@@ -1,6 +1,7 @@
 import type { EditorSlide } from "@/components/editor/types";
 import type { EntryMethod, SlideContent } from "@/components/content-wizard/types";
 import type { TemplateAlternative, TemplatePresetId } from "@/components/mapping/types";
+import type { SlideModel } from "@/core/types";
 
 /** One slide: structured content + template assignment (single source of truth). */
 export type DeckSlide = SlideContent & {
@@ -37,6 +38,8 @@ export type DeckDocument = {
   slides: DeckSlide[];
   /** Canvas layout; null = regenerate from `slides` on next editor visit. */
   editorSlides: EditorSlide[] | null;
+  /** Template-first mapping output (aligned with `slides` when set). */
+  slideModels: SlideModel[] | null;
   /** Bumps when outline changes require rebuilding the canvas. */
   layoutGeneration: number;
 };

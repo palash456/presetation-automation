@@ -43,4 +43,6 @@ export type EditorSlide = {
   /** Slide-level content alignment */
   align: TextAlign;
   elements: EditorElement[];
+  /** Raster from uploaded template (PPTX import), shown behind elements */
+  backgroundImageUrl?: string;
 };

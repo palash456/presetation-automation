@@ -62,9 +62,18 @@ export function SlideCanvas({
           className="relative overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-950"
           style={{ width: SLIDE_W, height: SLIDE_H }}
         >
+          {slide.backgroundImageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- data URLs from template import
+            <img
+              src={slide.backgroundImageUrl}
+              alt=""
+              className="pointer-events-none absolute inset-0 z-0 h-full w-full object-contain"
+              draggable={false}
+            />
+          ) : null}
           {/* Template rails (smart inset) */}
           <div
-            className="pointer-events-none absolute rounded-md border border-dashed border-[var(--accent)]/35"
+            className="pointer-events-none absolute z-[1] rounded-md border border-dashed border-[var(--accent)]/35"
             style={{
               top: slide.padding,
               left: slide.padding,
@@ -75,7 +84,7 @@ export function SlideCanvas({
 
           {gridVisible && (
             <div
-              className="pointer-events-none absolute inset-0 opacity-[0.2] dark:opacity-15"
+              className="pointer-events-none absolute inset-0 z-[1] opacity-[0.2] dark:opacity-15"
               style={{
                 backgroundImage: `
                   linear-gradient(to right, var(--border-subtle) 1px, transparent 1px),
@@ -87,7 +96,7 @@ export function SlideCanvas({
           )}
 
           <div
-            className="relative h-full w-full"
+            className="relative z-[2] h-full w-full"
             onMouseDown={clearSelectionIfBackground}
           >
             {slide.elements.map((el) => (

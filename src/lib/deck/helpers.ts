@@ -1,4 +1,14 @@
-import type { EditorElement, EditorSlide, EditorTextElement } from "@/components/editor/types";
+import type {
+  EditorElement,
+  EditorSlide,
+  EditorTextElement,
+  PlaceholderKind,
+  TextAlign,
+} from "@/components/editor/types";
+import type {
+  SlideTemplateDefinition,
+  TemplateRegion,
+} from "@/components/template-system/types";
 import {
   slideHasOverflow,
   type SlideContent,
@@ -12,7 +22,16 @@ import type { MappingSlide, TemplatePresetId } from "@/components/mapping/types"
 import type { PreviewSlide } from "@/components/preview-export/mock-deck";
 import { companyMappingPresetPool } from "@/components/template-system/company-mock-data";
 import type { CompanyTemplate } from "@/components/template-system/company-types";
+import { companyTemplateToTemplate } from "@/core/adapter/company-to-template";
+import { slideModelToEditorSlide } from "@/core/layout/slide-model-to-editor-slide";
+import { resolveSlideModelsForDeck } from "./slide-model-resolve";
 import type { DeckDocument, DeckSlide, PreflightIssue } from "./types";
+import {
+  computeTemplateMatchScore,
+  refreshDerivedSlideFields,
+} from "./refresh-deck-slide";
+
+export { computeTemplateMatchScore, refreshDerivedSlideFields };
 
 const sans = "var(--font-geist-sans), system-ui, sans-serif";
 
@@ -116,43 +135,6 @@ export function resolvePresetWithPreference(
   };
 }
 
-export function computeTemplateMatchScore(s: SlideContent): number {
-  let base = 72;
-  if (
-    s.slideType === "title" &&
-    s.title.length > 0 &&
-    s.title.length <= s.limits.title
-  ) {
-    base = 90;
-  }
-  if (s.slideType === "content" && s.bullets.length >= 2) base += 6;
-  if (s.slideType === "comparison" && s.bullets.length >= 2) base += 4;
-  const overflow = slideHasOverflow(s);
-  if (
-    overflow.title ||
-    overflow.subtitle ||
-    overflow.bullets ||
-    overflow.notes
-  ) {
-    base -= 18;
-  }
-  return Math.min(99, Math.max(52, base));
-}
-
-export function refreshDerivedSlideFields(s: DeckSlide): DeckSlide {
-  const ov = slideHasOverflow(s);
-  const overflowRisk =
-    ov.title || ov.subtitle || ov.bullets || ov.notes;
-  const layoutBreakRisk =
-    s.bullets.length > 7 || (s.slideType === "title" && s.bullets.length > 2);
-  return {
-    ...s,
-    templateMatchScore: computeTemplateMatchScore(s),
-    overflowRisk,
-    layoutBreakRisk,
-  };
-}
-
 export function slideFromMappingSeed(m: MappingSlide): DeckSlide {
   const slideType = templateToSlideType(m.assignedTemplateId);
   const base: SlideContent = {
@@ -234,6 +216,7 @@ export function createStarterOutlineDeck(
       pool && pool.length > 0 ? pool : null,
     slides,
     editorSlides: null,
+    slideModels: null,
     layoutGeneration: 0,
   };
 }
@@ -258,6 +241,7 @@ export function createBlankDeckDocument(): DeckDocument {
     allowedMappingPresetIds: null,
     slides: [],
     editorSlides: null,
+    slideModels: null,
     layoutGeneration: 0,
   };
 }
@@ -357,80 +341,291 @@ export function editorSlideToContentPatch(
   return { title, subtitle, bullets };
 }
 
-export function buildEditorSlidesFromDeck(slides: DeckSlide[]): EditorSlide[] {
-  return slides.map((ds, index) => {
-    const id = `es-${ds.id}`;
-    const bulletText = ds.bullets.map((b) => `• ${b}`).join("\n");
-    const elements: EditorElement[] = [
-      {
+function countPriorSamePreset(
+  slides: DeckSlide[],
+  slideIndex: number,
+  preset: TemplatePresetId,
+): number {
+  let n = 0;
+  for (let i = 0; i < slideIndex; i++) {
+    if (slides[i]!.assignedTemplateId === preset) n++;
+  }
+  return n;
+}
+
+/**
+ * Resolve which template layout row applies to this deck slide (metadata-driven).
+ */
+export function resolveSlideDefinitionForDeckSlide(
+  slides: DeckSlide[],
+  slideIndex: number,
+  company: CompanyTemplate | null,
+): SlideTemplateDefinition | null {
+  const defs = company?.slideTemplates;
+  if (!defs?.length) return null;
+
+  const ds = slides[slideIndex]!;
+  const nDeck = slides.length;
+  const nDef = defs.length;
+
+  if (nDef === nDeck && defs[slideIndex]) {
+    return defs[slideIndex]!;
+  }
+
+  const preset = ds.assignedTemplateId;
+  const matches = defs.filter((t) => t.mappingPresetId === preset);
+  if (matches.length > 0) {
+    const variant = countPriorSamePreset(slides, slideIndex, preset);
+    return matches[variant % matches.length]!;
+  }
+
+  return defs[slideIndex % defs.length]!;
+}
+
+function sortTextRegions(regions: TemplateRegion[]): TemplateRegion[] {
+  return regions
+    .filter((r) => r.kind === "text")
+    .sort((a, b) => (a.y !== b.y ? a.y - b.y : a.x - b.x));
+}
+
+function textRankByRegionId(regions: TemplateRegion[]): Map<string, number> {
+  const sorted = sortTextRegions(regions);
+  return new Map(sorted.map((r, i) => [r.id, i]));
+}
+
+function regionKindToPlaceholder(k: TemplateRegion["kind"]): PlaceholderKind {
+  if (k === "chart") return "chart";
+  if (k === "shape") return "shape";
+  if (k === "icon") return "icon";
+  return "image";
+}
+
+function regionToTextAlign(r: TemplateRegion): TextAlign {
+  if (r.textAlign === "center") return "center";
+  if (r.textAlign === "end") return "right";
+  return "left";
+}
+
+function fontSizeForTextSlot(ti: number, hNorm: number): number {
+  const h = Math.max(0.02, hNorm);
+  if (ti === 0) return Math.min(44, Math.max(18, Math.round(10 + h * 85)));
+  if (ti === 1) return Math.min(28, Math.max(13, Math.round(8 + h * 70)));
+  return Math.min(22, Math.max(11, Math.round(7 + h * 55)));
+}
+
+function lineHeightForTextSlot(ti: number): number {
+  if (ti === 0) return 1.12;
+  if (ti === 1) return 1.3;
+  return 1.42;
+}
+
+function truncateToMaxChars(text: string, maxChars: number): string {
+  if (maxChars <= 0 || text.length <= maxChars) return text;
+  return `${text.slice(0, Math.max(0, maxChars - 1))}…`;
+}
+
+function buildGenericEditorSlide(ds: DeckSlide, index: number): EditorSlide {
+  const id = `es-${ds.id}`;
+  const bulletText = ds.bullets.map((b) => `• ${b}`).join("\n");
+  const elements: EditorElement[] = [
+    {
+      type: "text",
+      id: `${id}-t`,
+      role: "Title",
+      content: ds.title || `Slide ${index + 1}`,
+      x: 8,
+      y: 12,
+      w: 72,
+      h: 14,
+      locked: true,
+      fontFamily: sans,
+      fontSize: 36,
+      lineHeight: 1.15,
+      align: "left",
+    },
+    {
+      type: "text",
+      id: `${id}-s`,
+      role: "Subtitle",
+      content: ds.subtitle,
+      x: 8,
+      y: 28,
+      w: 64,
+      h: 10,
+      locked: false,
+      fontFamily: sans,
+      fontSize: 18,
+      lineHeight: 1.4,
+      align: "left",
+    },
+    {
+      type: "text",
+      id: `${id}-b`,
+      role: "Body",
+      content:
+        bulletText ||
+        (ds.notes ? ds.notes.slice(0, 400) : "—"),
+      x: 8,
+      y: 42,
+      w: 52,
+      h: 38,
+      locked: false,
+      fontFamily: sans,
+      fontSize: 15,
+      lineHeight: 1.45,
+      align: "left",
+    },
+    {
+      type: "placeholder",
+      id: `${id}-img`,
+      role: "Hero image",
+      placeholderKind: "image",
+      label: "Image",
+      x: 64,
+      y: 18,
+      w: 30,
+      h: 62,
+      locked: true,
+    },
+  ];
+  return {
+    id,
+    padding: 48,
+    spacing: 16,
+    align: "left",
+    elements,
+  };
+}
+
+export function buildEditorSlideFromCompanyDefinition(
+  ds: DeckSlide,
+  def: SlideTemplateDefinition,
+  index: number,
+): EditorSlide {
+  const id = `es-${ds.id}`;
+  const bulletText = ds.bullets.map((b) => `• ${b}`).join("\n");
+  const titleContent = truncateToMaxChars(
+    ds.title || `Slide ${index + 1}`,
+    def.regions.find((r) => r.kind === "text")?.maxChars ?? 600,
+  );
+  const subtitleContent = truncateToMaxChars(
+    ds.subtitle,
+    400,
+  );
+  const bodyContent = truncateToMaxChars(
+    bulletText || (ds.notes ? ds.notes.slice(0, 400) : "—"),
+    4000,
+  );
+
+  const rankMap = textRankByRegionId(def.regions);
+  const elements: EditorElement[] = [];
+
+  for (const region of def.regions) {
+    if (region.kind === "text") {
+      const ti = rankMap.get(region.id) ?? 0;
+      let raw =
+        ti === 0
+          ? titleContent
+          : ti === 1
+            ? subtitleContent
+            : ti === 2
+              ? bodyContent
+              : "";
+      raw = truncateToMaxChars(raw, region.maxChars || 2000);
+      const role =
+        ti === 0
+          ? "Title"
+          : ti === 1
+            ? "Subtitle"
+            : ti === 2
+              ? "Body"
+              : region.label || `Text ${ti + 1}`;
+      const locked = region.locked ?? ti === 0;
+      elements.push({
         type: "text",
-        id: `${id}-t`,
-        role: "Title",
-        content: ds.title || `Slide ${index + 1}`,
-        x: 8,
-        y: 12,
-        w: 72,
-        h: 14,
-        locked: true,
+        id: `${id}-txt-${region.id}`,
+        role,
+        content: raw,
+        x: region.x * 100,
+        y: region.y * 100,
+        w: region.w * 100,
+        h: region.h * 100,
+        locked,
         fontFamily: sans,
-        fontSize: 36,
-        lineHeight: 1.15,
-        align: "left",
-      },
-      {
-        type: "text",
-        id: `${id}-s`,
-        role: "Subtitle",
-        content: ds.subtitle,
-        x: 8,
-        y: 28,
-        w: 64,
-        h: 10,
-        locked: false,
-        fontFamily: sans,
-        fontSize: 18,
-        lineHeight: 1.4,
-        align: "left",
-      },
-      {
-        type: "text",
-        id: `${id}-b`,
-        role: "Body",
-        content:
-          bulletText ||
-          (ds.notes
-            ? ds.notes.slice(0, 400)
-            : "—"),
-        x: 8,
-        y: 42,
-        w: 52,
-        h: 38,
-        locked: false,
-        fontFamily: sans,
-        fontSize: 15,
-        lineHeight: 1.45,
-        align: "left",
-      },
-      {
+        fontSize: fontSizeForTextSlot(ti, region.h),
+        lineHeight: lineHeightForTextSlot(ti),
+        align: regionToTextAlign(region),
+      });
+    } else {
+      elements.push({
         type: "placeholder",
-        id: `${id}-img`,
-        role: "Hero image",
-        placeholderKind: "image",
-        label: "Image",
-        x: 64,
-        y: 18,
-        w: 30,
-        h: 62,
-        locked: true,
-      },
-    ];
-    return {
-      id,
-      padding: 48,
-      spacing: 16,
-      align: "left" as const,
-      elements,
-    };
+        id: `${id}-ph-${region.id}`,
+        role: region.label,
+        placeholderKind: regionKindToPlaceholder(region.kind),
+        label: region.label,
+        x: region.x * 100,
+        y: region.y * 100,
+        w: region.w * 100,
+        h: region.h * 100,
+        locked: region.locked ?? true,
+      });
+    }
+  }
+
+  if (elements.length === 0) {
+    return buildGenericEditorSlide(ds, index);
+  }
+
+  const pad = Math.min(56, Math.max(24, def.spacing.padding));
+  return {
+    id,
+    padding: pad,
+    spacing: def.spacing.margin,
+    align: "left",
+    elements,
+    ...(def.slidePreviewDataUrl
+      ? { backgroundImageUrl: def.slidePreviewDataUrl }
+      : {}),
+  };
+}
+
+/** Single slide for Map / Preview / export when company metadata exists. */
+export function buildEditorSlideForDeckIndex(
+  deck: DeckDocument,
+  slideIndex: number,
+  company: CompanyTemplate | null,
+): EditorSlide {
+  const slides = deck.slides;
+  const ds = slides[slideIndex]!;
+  const models = resolveSlideModelsForDeck(deck, company);
+  if (
+    company &&
+    company.slideTemplates.length > 0 &&
+    models &&
+    models.length === slides.length &&
+    models[slideIndex]
+  ) {
+    const template = companyTemplateToTemplate(company);
+    return slideModelToEditorSlide(models[slideIndex]!, template, slideIndex);
+  }
+  const def = resolveSlideDefinitionForDeckSlide(slides, slideIndex, company);
+  if (def) {
+    return buildEditorSlideFromCompanyDefinition(ds, def, slideIndex);
+  }
+  return buildGenericEditorSlide(ds, slideIndex);
+}
+
+/** Build editor canvas slides from outline + optional company template (metadata). */
+export function buildEditorSlidesFromDeck(
+  slides: DeckSlide[],
+  company: CompanyTemplate | null = null,
+): EditorSlide[] {
+  return slides.map((ds, index) => {
+    const def = resolveSlideDefinitionForDeckSlide(slides, index, company);
+    if (def) {
+      return buildEditorSlideFromCompanyDefinition(ds, def, index);
+    }
+    return buildGenericEditorSlide(ds, index);
   });
 }
 

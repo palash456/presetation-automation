@@ -18,9 +18,12 @@ import {
   X,
 } from "lucide-react";
 import { useDeck } from "@/context/deck-context";
+import { DeckSlideReadonlyPreview } from "@/components/deck-preview/deck-slide-readonly-preview";
+import { loadTemplateLibrary } from "@/components/template-system/template-library-storage";
 import { DECK_WORKFLOW } from "@/components/workflow/deck-workflow";
-import { EXPORT_FIDELITY, deckToPreviewSlides } from "@/lib/deck/helpers";
-import type { PreviewSlide } from "./mock-deck";
+import { EXPORT_FIDELITY } from "@/lib/deck/helpers";
+import { getExportEditorSlidesForDeck } from "@/lib/deck/export-editor-slides";
+import { downloadDeckAsPptx } from "@/lib/export/build-pptx-from-deck";
 
 function cn(...p: (string | false | undefined)[]) {
   return p.filter(Boolean).join(" ");
@@ -31,41 +34,18 @@ type ExportPhase = "idle" | "progress" | "success";
 
 const SHARE_URL = "https://present.app/v/demo-x7k2m9";
 
-function SlideFrame({ slide, slideIndex }: { slide: PreviewSlide; slideIndex: number }) {
-  return (
-    <div
-      key={slideIndex}
-      className="slideshow-slide-enter flex aspect-video w-full max-w-[min(1120px,92vw)] flex-col justify-center rounded-2xl border border-white/10 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black px-[8%] py-[6%] shadow-2xl shadow-black/50"
-    >
-      <h2 className="text-[clamp(1.5rem,4vw,2.75rem)] font-semibold tracking-tight text-white">
-        {slide.title}
-      </h2>
-      {slide.subtitle && (
-        <p className="mt-4 text-[clamp(0.95rem,2vw,1.25rem)] text-zinc-400">
-          {slide.subtitle}
-        </p>
-      )}
-      {slide.bullets.length > 0 && (
-        <ul className="mt-8 space-y-3 text-[clamp(0.9rem,1.6vw,1.1rem)] text-zinc-300">
-          {slide.bullets.map((b, i) => (
-            <li key={i} className="flex gap-3">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-indigo-400" />
-              <span>{b}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 export function PreviewExportScreen() {
   const router = useRouter();
   const { deck, preflight } = useDeck();
-  const previewSlides = useMemo(
-    () => deckToPreviewSlides(deck.slides),
-    [deck.slides],
-  );
+  const previewSlidesEditor = useMemo(() => {
+    const lib = loadTemplateLibrary();
+    const company =
+      deck.activeCompanyTemplateId != null
+        ? lib.find((c) => c.id === deck.activeCompanyTemplateId) ?? null
+        : null;
+    return getExportEditorSlidesForDeck(deck, company);
+  }, [deck]);
+
   const [index, setIndex] = useState(0);
   const [panelOpen, setPanelOpen] = useState(false);
   const [phase, setPhase] = useState<ExportPhase>("idle");
@@ -76,28 +56,22 @@ export function PreviewExportScreen() {
   const [compressImages, setCompressImages] = useState(false);
   const [themeCheck, setThemeCheck] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const total = Math.max(1, previewSlides.length);
-  const slide: PreviewSlide =
-    previewSlides[index] ??
-    previewSlides[0] ?? {
-      id: "empty",
-      title: "No slides in deck",
-      subtitle: "",
-      bullets: [],
-    };
+  const total = Math.max(1, previewSlidesEditor.length);
+  const currentEditorSlide = previewSlidesEditor[Math.min(index, total - 1)];
 
   useEffect(() => {
     const id = requestAnimationFrame(() => {
       setIndex((i) =>
-        previewSlides.length === 0
+        previewSlidesEditor.length === 0
           ? 0
-          : Math.min(i, Math.max(0, previewSlides.length - 1)),
+          : Math.min(i, Math.max(0, previewSlidesEditor.length - 1)),
       );
     });
     return () => cancelAnimationFrame(id);
-  }, [previewSlides.length]);
+  }, [previewSlidesEditor.length]);
 
   const go = useCallback((delta: number) => {
     setIndex((i) => {
@@ -112,11 +86,21 @@ export function PreviewExportScreen() {
     setPhase("idle");
     setFormat(null);
     setProgress(0);
+    setExportError(null);
     if (progressTimer.current) {
       clearInterval(progressTimer.current);
       progressTimer.current = null;
     }
   }, []);
+
+  const runPptxDownload = useCallback(async () => {
+    const lib = loadTemplateLibrary();
+    const company =
+      deck.activeCompanyTemplateId != null
+        ? lib.find((c) => c.id === deck.activeCompanyTemplateId) ?? null
+        : null;
+    await downloadDeckAsPptx(deck, company);
+  }, [deck]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -154,27 +138,54 @@ export function PreviewExportScreen() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [go, panelOpen, phase, previewSlides.length, resetExport, router]);
+  }, [go, panelOpen, phase, previewSlidesEditor.length, resetExport, router]);
 
-  const startExport = () => {
+  const startExport = useCallback(async () => {
     const fmt = selectedFormat;
     setFormat(fmt);
+    setExportError(null);
     setPhase("progress");
     setProgress(0);
-    if (progressTimer.current) clearInterval(progressTimer.current);
+    if (progressTimer.current) {
+      clearInterval(progressTimer.current);
+      progressTimer.current = null;
+    }
+
+    if (fmt === "pptx") {
+      try {
+        setProgress(30);
+        await runPptxDownload();
+        setProgress(100);
+        setPhase("success");
+      } catch (err) {
+        console.error(err);
+        setExportError(
+          err instanceof Error
+            ? err.message
+            : "Could not build the PowerPoint file.",
+        );
+        setPhase("idle");
+        setProgress(0);
+      }
+      return;
+    }
+
     let p = 0;
     progressTimer.current = setInterval(() => {
       p += Math.random() * 18 + 6;
       if (p >= 100) {
         p = 100;
-        if (progressTimer.current) clearInterval(progressTimer.current);
+        if (progressTimer.current) {
+          clearInterval(progressTimer.current);
+          progressTimer.current = null;
+        }
         setProgress(100);
         setPhase("success");
       } else {
         setProgress(Math.min(100, Math.round(p)));
       }
     }, 200);
-  };
+  }, [runPptxDownload, selectedFormat]);
 
   useEffect(() => {
     return () => {
@@ -265,7 +276,19 @@ export function PreviewExportScreen() {
 
       {/* Slideshow */}
       <div className="flex flex-1 flex-col items-center justify-center px-4 pb-16 pt-20">
-        <SlideFrame slide={slide} slideIndex={index} />
+        {previewSlidesEditor.length === 0 ? (
+          <div className="flex aspect-video w-full max-w-3xl items-center justify-center rounded-2xl border border-white/10 bg-zinc-900/80 px-8 text-center text-sm text-zinc-400">
+            No slides in this deck. Add content in the Content step first.
+          </div>
+        ) : currentEditorSlide ? (
+          <div className="slideshow-slide-enter rounded-2xl border border-white/10 bg-zinc-900/50 p-2 shadow-2xl shadow-black/50">
+            <DeckSlideReadonlyPreview
+              slide={currentEditorSlide}
+              transitionKey={index}
+              className="max-w-none border-0 shadow-none"
+            />
+          </div>
+        ) : null}
         <div className="mt-10 flex items-center gap-3">
           <button
             type="button"
@@ -276,7 +299,7 @@ export function PreviewExportScreen() {
             <ArrowLeft className="size-5" />
           </button>
           <div className="flex gap-1.5">
-            {previewSlides.map((_, i) => (
+            {previewSlidesEditor.map((_, i) => (
               <button
                 key={i}
                 type="button"
@@ -429,9 +452,14 @@ export function PreviewExportScreen() {
                 />
               </ul>
 
+              {exportError ? (
+                <p className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-800 dark:text-red-200">
+                  {exportError}
+                </p>
+              ) : null}
               <button
                 type="button"
-                onClick={startExport}
+                onClick={() => void startExport()}
                 className="mt-8 w-full rounded-full bg-[var(--accent)] py-3.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
               >
                 Export{" "}
@@ -505,17 +533,19 @@ export function PreviewExportScreen() {
               </div>
               <h3 className="mt-6 text-lg font-semibold">Ready</h3>
               <p className="mt-2 max-w-xs text-sm text-[var(--muted)]">
-                Your{" "}
                 {format === "pptx"
-                  ? "presentation"
+                  ? "Your .pptx file was saved using the browser download. Use Download again if the dialog was dismissed."
                   : format === "pdf"
-                    ? "PDF"
-                    : "asset bundle"}{" "}
-                is prepared. Download will start automatically in a full build.
+                    ? "PDF export is not generated in the browser yet — choose PowerPoint and print to PDF, or use your OS print dialog."
+                    : "Asset bundle packaging is not wired in this build yet."}
               </p>
               <button
                 type="button"
-                className="mt-8 inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-6 py-3 text-sm font-medium text-white hover:opacity-90"
+                onClick={() => {
+                  if (format === "pptx") void runPptxDownload();
+                }}
+                className="mt-8 inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-6 py-3 text-sm font-medium text-white hover:opacity-90 disabled:opacity-40"
+                disabled={format !== "pptx"}
               >
                 <Download className="size-4" />
                 Download again

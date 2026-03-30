@@ -30,6 +30,9 @@ function migrate(raw: unknown): DeckDocument {
   if (doc.allowedMappingPresetIds === undefined) {
     doc.allowedMappingPresetIds = null;
   }
+  if (doc.slideModels === undefined) {
+    doc.slideModels = null;
+  }
   return doc;
 }
 

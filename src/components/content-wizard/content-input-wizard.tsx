@@ -13,7 +13,9 @@ import {
 import { useDeck } from "@/context/deck-context";
 import { deckSlidePatchForSlideType } from "@/lib/deck/helpers";
 import type { DeckSlide } from "@/lib/deck/types";
-import { DEMO_SLIDES_SEED, slidesFromPlainText } from "./initial-slides";
+import { structuredContentFromUploadPlaceholder } from "@/core/parser/upload-placeholder";
+import { slideContentRowsFromStructured } from "@/core/parser/structured-to-slide-rows";
+import { slidesFromPlainText } from "./initial-slides";
 import type { SlideContent, SlideType } from "./types";
 import { countBulletsChars, slideHasOverflow } from "./types";
 
@@ -135,14 +137,11 @@ export function ContentInputWizard() {
       setWizardMeta({
         uploadLabel: label,
       });
-      const ts = Date.now();
-      replaceSlidesFromPlainContent(
-        DEMO_SLIDES_SEED.map((s, i) => ({
-          ...s,
-          id: `up-${i}-${ts}`,
-        })),
+      const rows = slideContentRowsFromStructured(
+        structuredContentFromUploadPlaceholder(label),
       );
-      setActiveId(`up-0-${ts}`);
+      replaceSlidesFromPlainContent(rows);
+      setActiveId(rows[0]?.id ?? null);
     }
   };
 
