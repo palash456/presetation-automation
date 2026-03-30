@@ -1,8 +1,60 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f4f4f5;
+  --foreground: #18181b;
+  --surface-raised: #ffffff;
+  --surface-inset: #e4e4e7;
+  --border-subtle: #e4e4e7;
+  --accent: #4f46e5;
+  --accent-muted: rgba(79, 70, 229, 0.12);
+  --muted: #71717a;
+  --sidebar-expanded: 240px;
+  --sidebar-collapsed: 64px;
+  --header-height: 56px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light):not(.dark) {
+    --background: #0c0c0e;
+    --foreground: #fafafa;
+    --surface-raised: #141416;
+    --surface-inset: #1c1c1f;
+    --border-subtle: #27272a;
+    --accent-muted: rgba(99, 102, 241, 0.2);
+    --muted: #a1a1aa;
+  }
+}
+
+/* Explicit theme (Settings) — overrides system when set */
+:root.dark,
+html.dark {
+  --background: #0c0c0e;
+  --foreground: #fafafa;
+  --surface-raised: #141416;
+  --surface-inset: #1c1c1f;
+  --border-subtle: #27272a;
+  --accent: #4f46e5;
+  --accent-muted: rgba(99, 102, 241, 0.2);
+  --muted: #a1a1aa;
+  --sidebar-expanded: 240px;
+  --sidebar-collapsed: 64px;
+  --header-height: 56px;
+}
+
+:root.light,
+html.light {
+  --background: #f4f4f5;
+  --foreground: #18181b;
+  --surface-raised: #ffffff;
+  --surface-inset: #e4e4e7;
+  --border-subtle: #e4e4e7;
+  --accent: #4f46e5;
+  --accent-muted: rgba(79, 70, 229, 0.12);
+  --muted: #71717a;
+  --sidebar-expanded: 240px;
+  --sidebar-collapsed: 64px;
+  --header-height: 56px;
 }
 
 @theme inline {
@@ -12,15 +64,101 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Shell layout transitions */
+.shell-sidebar {
+  transition: width 220ms ease-out;
+}
+
+.shell-main-fade {
+  animation: shell-main-enter 180ms ease-out;
+}
+
+@keyframes shell-main-enter {
+  from {
+    opacity: 0.96;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mapping-preview-enter {
+  animation: mapping-preview-morph 420ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+.mapping-preview-shell {
+  transition: opacity 280ms ease, transform 280ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+@keyframes mapping-preview-morph {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(8px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mapping-preview-enter {
+    animation: none;
+  }
+  .mapping-preview-shell {
+    transition: none;
+  }
+}
+
+/* Fullscreen slideshow */
+.slideshow-slide-enter {
+  animation: slideshow-enter 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes slideshow-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.98) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slideshow-slide-enter {
+    animation: none;
+  }
+}
+
+.export-panel-enter {
+  animation: export-panel-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes export-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .export-panel-enter {
+    animation: none;
+  }
 }
