@@ -1,5 +1,3 @@
-import type { TemplatePresetId } from "@/components/mapping/types";
-
 export type TemplateStatus = "processed" | "needs_review";
 
 export type LayoutRule = "fixed" | "flexible";
@@ -45,8 +43,6 @@ export type SlideTemplateDefinition = {
   designTags: string[];
   density: ContentDensity;
   allowedElements: string[];
-  /** Preset used in Map / export when this design-system slide is chosen */
-  mappingPresetId?: TemplatePresetId;
   /**
    * Raster preview of the slide (e.g. from PPTX import): JPEG data URL, drawn behind regions on the canvas.
    * Can be large; omitted when not generated.

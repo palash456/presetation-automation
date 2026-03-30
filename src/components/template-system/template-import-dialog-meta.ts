@@ -22,7 +22,7 @@ export function importPipelineDialogMeta(
       return {
         title: "Code / schema import",
         body:
-          "Paste JSON from design codegen, a React layout tree, or your own schema. We validate against the slide template shape (regions, spacing, mappingPresetId) and merge into the active pack.",
+          "Paste JSON from design codegen, a React layout tree, or your own schema. We validate against the slide template shape (regions, spacing) and merge into the active pack.",
       };
     case "google_slides":
       return {

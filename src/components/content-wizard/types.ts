@@ -1,11 +1,3 @@
-export type SlideType =
-  | "title"
-  | "content"
-  | "comparison"
-  | "data"
-  | "section"
-  | "closing";
-
 export type EntryMethod = "upload" | "paste" | "ai";
 
 export type FieldLimits = {
@@ -23,7 +15,6 @@ export type SlideContent = {
   notes: string;
   /** Labels for media slots, e.g. "Hero image", "Chart" */
   mediaPlaceholders: string[];
-  slideType: SlideType;
   /** 0–100, template fit heuristic */
   templateMatchScore: number;
   limits: FieldLimits;

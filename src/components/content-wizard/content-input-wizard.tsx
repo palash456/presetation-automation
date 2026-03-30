@@ -10,23 +10,14 @@ import {
   Upload,
   Wand2,
 } from "lucide-react";
+import { loadTemplateLibrary } from "@/components/template-system/template-library-storage";
 import { useDeck } from "@/context/deck-context";
-import { deckSlidePatchForSlideType } from "@/lib/deck/helpers";
 import type { DeckSlide } from "@/lib/deck/types";
 import { structuredContentFromUploadPlaceholder } from "@/core/parser/upload-placeholder";
 import { slideContentRowsFromStructured } from "@/core/parser/structured-to-slide-rows";
 import { slidesFromPlainText } from "./initial-slides";
-import type { SlideContent, SlideType } from "./types";
+import type { SlideContent } from "./types";
 import { countBulletsChars, slideHasOverflow } from "./types";
-
-const SLIDE_TYPES: { value: SlideType; label: string }[] = [
-  { value: "title", label: "Title" },
-  { value: "content", label: "Content" },
-  { value: "comparison", label: "Comparison" },
-  { value: "data", label: "Data" },
-  { value: "section", label: "Section" },
-  { value: "closing", label: "Closing" },
-];
 
 const TONES = [
   "Professional",
@@ -87,7 +78,6 @@ export function ContentInputWizard() {
     replaceSlidesFromPlainContent,
     updateDeckSlide,
   } = useDeck();
-  const mappingPool = deck.allowedMappingPresetIds;
   const step = deck.wizardStep;
   const entryMethod = deck.entryMethod;
   const pasteText = deck.pasteText;
@@ -473,23 +463,6 @@ export function ContentInputWizard() {
                       {snippet}
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <select
-                        value={s.slideType}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => {
-                          const v = e.target.value as SlideType;
-                          updateDeckSlide(s.id, {
-                            ...deckSlidePatchForSlideType(s, v, mappingPool),
-                          });
-                        }}
-                        className="max-w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-1 text-[11px] font-medium focus:border-[var(--accent)] focus:outline-none"
-                      >
-                        {SLIDE_TYPES.map((t) => (
-                          <option key={t.value} value={t.value}>
-                            {t.label}
-                          </option>
-                        ))}
-                      </select>
                       <span
                         className="rounded-md bg-[var(--surface-inset)] px-2 py-0.5 text-[10px] font-medium tabular-nums text-[var(--muted)]"
                         title="Template match score"
@@ -515,27 +488,11 @@ export function ContentInputWizard() {
           {active ? (
             <div className="mx-auto max-w-2xl px-6 py-6">
               <div className="mb-6 flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] pb-4">
-                <span className="text-xs text-[var(--muted)]">Slide type</span>
-                <select
-                  value={active.slideType}
-                  onChange={(e) =>
-                    updateDeckSlide(active.id, {
-                      ...deckSlidePatchForSlideType(
-                        active,
-                        e.target.value as SlideType,
-                        mappingPool,
-                      ),
-                    })
-                  }
-                  className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-1.5 text-sm font-medium focus:border-[var(--accent)] focus:outline-none"
-                >
-                  {SLIDE_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-                <span className="ml-auto text-xs tabular-nums text-[var(--muted)]">
+                <p className="min-w-0 flex-1 text-xs leading-relaxed text-[var(--muted)]">
+                  Layouts come from your template pack — assign them on the Map
+                  step.
+                </p>
+                <span className="text-xs tabular-nums text-[var(--muted)]">
                   Template match{" "}
                   <strong className="text-foreground">
                     {active.templateMatchScore}%
@@ -713,8 +670,8 @@ export function ContentInputWizard() {
 
       <footer className="flex shrink-0 flex-col gap-3 border-t border-[var(--border-subtle)] bg-[var(--surface-raised)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="min-w-0 text-xs leading-relaxed text-[var(--muted)]">
-          When fields look right, map slides to template presets — then refine
-          in the editor.
+          When fields look right, map slides to pack layouts — then refine in the
+          editor.
         </p>
         <Link
           href="/create/mapping"

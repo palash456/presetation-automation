@@ -18,5 +18,9 @@ export function resolveSlideModelsForDeck(
   if (deck.slideModels && deck.slideModels.length === deck.slides.length) {
     return deck.slideModels;
   }
-  return rebuildSlideModelsFromDeckSlides(deck.slides, company).models;
+  return rebuildSlideModelsFromDeckSlides(
+    deck.slides,
+    company,
+    deck.structuredContent,
+  ).models;
 }

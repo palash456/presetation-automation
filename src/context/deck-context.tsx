@@ -13,24 +13,25 @@ import {
 import type { EditorSlide } from "@/components/editor/types";
 import {
   computePreflightIssues,
-  contentRowsToDeckSlides,
   createBlankDeckDocument,
   createStarterOutlineDeck,
   editorSlideToContentPatch,
   isMappingOnlyPatch,
   newDeckId,
   refreshDerivedSlideFields,
-  remapDeckSlidesToPool,
 } from "@/lib/deck/helpers";
 import {
   buildSlideModelsFromContentRows,
   rebuildSlideModelsFromDeckSlides,
 } from "@/lib/deck/slide-model-bridge";
+import {
+  replaceStructuredSectionForSlide,
+  structuredContentForDeck,
+} from "@/lib/deck/structured-deck-sync";
 import { loadTemplateLibrary } from "@/components/template-system/template-library-storage";
 import { syncDeckToHistory } from "@/lib/history/storage";
 import { deckWithSlideModelsHydrated } from "@/lib/deck/hydrate-slide-models";
 import { loadDeckFromStorage, saveDeckToStorage } from "@/lib/deck/storage";
-import type { TemplatePresetId } from "@/components/mapping/types";
 import type { DeckDocument, DeckSlide, PreflightIssue } from "@/lib/deck/types";
 import type { EntryMethod } from "@/components/content-wizard/types";
 import type { SlideContent } from "@/components/content-wizard/types";
@@ -56,7 +57,7 @@ type DeckContextValue = {
   setActiveCompanyTemplate: (args: {
     id: string;
     name: string;
-    allowedMappingPresetIds: TemplatePresetId[] | null;
+    allowedTemplateSlideIds: string[] | null;
   }) => void;
   updateDeckSlide: (id: string, patch: Partial<DeckSlide>) => void;
   pushEditorSlides: (editorSlides: EditorSlide[]) => void;
@@ -148,14 +149,21 @@ export function DeckProvider({ children }: { children: ReactNode }) {
 
   const setDeckSlides = useCallback(
     (slides: DeckSlide[]) => {
-      setDeck((d) => ({
-        ...d,
-        slides: slides.map(refreshDerivedSlideFields),
-        editorSlides: null,
-        slideModels: null,
-        layoutGeneration: d.layoutGeneration + 1,
-        updatedAt: Date.now(),
-      }));
+      setDeck((d) => {
+        const refreshed = slides.map(refreshDerivedSlideFields);
+        return {
+          ...d,
+          slides: refreshed,
+          editorSlides: null,
+          slideModels: null,
+          structuredContent: structuredContentForDeck(
+            refreshed,
+            d.structuredContent,
+          ),
+          layoutGeneration: d.layoutGeneration + 1,
+          updatedAt: Date.now(),
+        };
+      });
       scheduleSave();
     },
     [scheduleSave],
@@ -165,28 +173,39 @@ export function DeckProvider({ children }: { children: ReactNode }) {
     (rows: SlideContent[]) => {
       setDeck((d) => {
         const lib = loadTemplateLibrary();
-        const company =
+        let company =
           lib.find((c) => c.id === d.activeCompanyTemplateId) ?? null;
-        if (company && company.slideTemplates.length > 0) {
-          const { models, slides } = buildSlideModelsFromContentRows(
-            rows,
-            company,
-          );
+        if (!company?.slideTemplates?.length) {
+          company =
+            lib.find((c) => c.slideTemplates.length > 0) ?? null;
+          if (company) {
+            console.warn(
+              "[deck] No active pack with templates — using first library pack:",
+              company.name,
+            );
+          }
+        }
+        if (company?.slideTemplates?.length) {
+          const built = buildSlideModelsFromContentRows(rows, company);
           return {
             ...d,
-            slides,
-            slideModels: models,
+            slides: built.slides,
+            slideModels: built.models,
+            structuredContent: built.structured,
             editorSlides: null,
             wizardStep: 2,
             layoutGeneration: d.layoutGeneration + 1,
             updatedAt: Date.now(),
           };
         }
-        const slides = contentRowsToDeckSlides(rows, d.allowedMappingPresetIds);
+        console.warn(
+          "[deck] No template pack with slide layouts; outline cleared.",
+        );
         return {
           ...d,
-          slides,
-          slideModels: null,
+          slides: [],
+          slideModels: [],
+          structuredContent: null,
           editorSlides: null,
           wizardStep: 2,
           layoutGeneration: d.layoutGeneration + 1,
@@ -202,37 +221,29 @@ export function DeckProvider({ children }: { children: ReactNode }) {
     (args: {
       id: string;
       name: string;
-      allowedMappingPresetIds: TemplatePresetId[] | null;
+      allowedTemplateSlideIds: string[] | null;
     }) => {
       setDeck((d) => {
         const lib = loadTemplateLibrary();
         const company = lib.find((c) => c.id === args.id) ?? null;
-        const pool = args.allowedMappingPresetIds;
-        const restrictive = pool != null && pool.length > 0;
+        const pool = args.allowedTemplateSlideIds;
         let slides = d.slides;
         let slideModels = d.slideModels;
         let editorSlides = d.editorSlides;
         let layoutGeneration = d.layoutGeneration;
 
+        let structuredContent = d.structuredContent;
         if (company && company.slideTemplates.length > 0 && d.slides.length > 0) {
-          const rebuilt = rebuildSlideModelsFromDeckSlides(d.slides, company);
+          const rebuilt = rebuildSlideModelsFromDeckSlides(
+            d.slides,
+            company,
+            d.structuredContent,
+          );
           slides = rebuilt.slides;
           slideModels = rebuilt.models;
+          structuredContent = rebuilt.structured;
           editorSlides = null;
           layoutGeneration = d.layoutGeneration + 1;
-        } else if (d.slides.length > 0 && restrictive) {
-          slideModels = null;
-          const nextSlides = remapDeckSlidesToPool(d.slides, pool);
-          const changed = nextSlides.some(
-            (s, i) =>
-              s.assignedTemplateId !== d.slides[i]!.assignedTemplateId ||
-              s.reasoning !== d.slides[i]!.reasoning,
-          );
-          slides = nextSlides;
-          if (changed) {
-            editorSlides = null;
-            layoutGeneration = d.layoutGeneration + 1;
-          }
         } else if (!company || company.slideTemplates.length === 0) {
           slideModels = null;
         }
@@ -241,9 +252,10 @@ export function DeckProvider({ children }: { children: ReactNode }) {
           ...d,
           activeCompanyTemplateId: args.id,
           activeCompanyTemplateName: args.name,
-          allowedMappingPresetIds: pool,
+          allowedTemplateSlideIds: pool,
           slides,
           slideModels,
+          structuredContent,
           editorSlides,
           layoutGeneration,
           updatedAt: Date.now(),
@@ -263,9 +275,24 @@ export function DeckProvider({ children }: { children: ReactNode }) {
             ? refreshDerivedSlideFields({ ...s, ...patch })
             : s,
         );
+        const idx = slides.findIndex((s) => s.id === id);
+        let structuredContent = d.structuredContent;
+        if (
+          !mappingOnly &&
+          structuredContent &&
+          idx >= 0 &&
+          structuredContent.sections.length === slides.length
+        ) {
+          structuredContent = replaceStructuredSectionForSlide(
+            structuredContent,
+            idx,
+            slides[idx],
+          );
+        }
         return {
           ...d,
           slides,
+          structuredContent,
           slideModels: mappingOnly ? d.slideModels : null,
           editorSlides: mappingOnly ? d.editorSlides : null,
           layoutGeneration: mappingOnly
@@ -288,9 +315,25 @@ export function DeckProvider({ children }: { children: ReactNode }) {
           const contentPatch = editorSlideToContentPatch(es);
           return refreshDerivedSlideFields({ ...s, ...contentPatch });
         });
+        let structuredContent = d.structuredContent;
+        if (
+          structuredContent &&
+          structuredContent.sections.length === slides.length
+        ) {
+          for (let i = 0; i < slides.length; i++) {
+            if (editorSlides[i]) {
+              structuredContent = replaceStructuredSectionForSlide(
+                structuredContent,
+                i,
+                slides[i],
+              );
+            }
+          }
+        }
         return {
           ...d,
           slides,
+          structuredContent,
           editorSlides: editorSlides,
           slideModels: null,
           updatedAt: Date.now(),
@@ -327,7 +370,7 @@ export function DeckProvider({ children }: { children: ReactNode }) {
     fresh.id = newDeckId();
     fresh.activeCompanyTemplateId = null;
     fresh.activeCompanyTemplateName = null;
-    fresh.allowedMappingPresetIds = null;
+    fresh.allowedTemplateSlideIds = null;
     setDeck(fresh);
     saveDeckToStorage(fresh);
     setLastSavedAt(fresh.updatedAt);
@@ -349,14 +392,12 @@ export function DeckProvider({ children }: { children: ReactNode }) {
       lib.find((c) => c.id === deck.activeCompanyTemplateId) ?? lib[0] ?? null;
     let outline = createStarterOutlineDeck(co);
     if (co && co.slideTemplates.length > 0 && outline.slides.length > 0) {
-      const { models, slides } = buildSlideModelsFromContentRows(
-        outline.slides,
-        co,
-      );
+      const built = buildSlideModelsFromContentRows(outline.slides, co);
       outline = {
         ...outline,
-        slides,
-        slideModels: models,
+        slides: built.slides,
+        slideModels: built.models,
+        structuredContent: built.structured,
         layoutGeneration: outline.layoutGeneration + 1,
       };
     }

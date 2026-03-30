@@ -1,4 +1,4 @@
-import type { DeckDocument } from "./types";
+import type { DeckDocument, DeckSlide } from "./types";
 import { createBlankDeckDocument } from "./helpers";
 
 const STORAGE_KEY = "present-deck-document-v1";
@@ -27,11 +27,34 @@ function migrate(raw: unknown): DeckDocument {
   if (doc.activeCompanyTemplateName === undefined) {
     doc.activeCompanyTemplateName = null;
   }
-  if (doc.allowedMappingPresetIds === undefined) {
-    doc.allowedMappingPresetIds = null;
+  const rawDoc = doc as DeckDocument & {
+    allowedMappingPresetIds?: unknown;
+  };
+  if (doc.allowedTemplateSlideIds === undefined) {
+    doc.allowedTemplateSlideIds = null;
+  }
+  if ("allowedMappingPresetIds" in rawDoc) {
+    delete rawDoc.allowedMappingPresetIds;
+  }
+  for (const slide of doc.slides) {
+    const s = slide as DeckSlide & {
+      assignedTemplateId?: string;
+      slideType?: unknown;
+    };
+    if (typeof s.templateSlideId !== "string") {
+      s.templateSlideId =
+        typeof s.assignedTemplateId === "string"
+          ? s.assignedTemplateId
+          : "";
+    }
+    delete s.assignedTemplateId;
+    delete s.slideType;
   }
   if (doc.slideModels === undefined) {
     doc.slideModels = null;
+  }
+  if (doc.structuredContent === undefined) {
+    doc.structuredContent = null;
   }
   return doc;
 }

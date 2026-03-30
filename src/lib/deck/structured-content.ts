@@ -6,7 +6,7 @@ export type StructuredDeckSlide = {
   title: string;
   subtitle: string;
   bullets: string[];
-  assignedTemplateId: string;
+  templateSlideId: string;
 };
 
 export type StructuredDeckContent = {
@@ -24,7 +24,7 @@ export function deckToStructuredContent(deck: DeckDocument): StructuredDeckConte
       title: s.title,
       subtitle: s.subtitle,
       bullets: [...s.bullets],
-      assignedTemplateId: s.assignedTemplateId,
+      templateSlideId: s.templateSlideId,
     })),
   };
 }

@@ -111,15 +111,6 @@ function coerceSlideTemplateDefinition(
       ? o.templateType
       : "Bullet slide";
 
-  const mappingPresetId =
-    o.mappingPresetId === "title-hero" ||
-    o.mappingPresetId === "content-classic" ||
-    o.mappingPresetId === "comparison-split" ||
-    o.mappingPresetId === "data-focus" ||
-    o.mappingPresetId === "section-minimal"
-      ? o.mappingPresetId
-      : undefined;
-
   const slidePreviewDataUrl =
     typeof o.slidePreviewDataUrl === "string" &&
     o.slidePreviewDataUrl.startsWith("data:image/")
@@ -138,7 +129,6 @@ function coerceSlideTemplateDefinition(
     designTags,
     density,
     allowedElements,
-    mappingPresetId,
     ...(slidePreviewDataUrl ? { slidePreviewDataUrl } : {}),
   };
 }

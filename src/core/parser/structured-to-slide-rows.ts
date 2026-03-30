@@ -1,4 +1,4 @@
-import type { SlideContent, SlideType } from "@/components/content-wizard/types";
+import type { SlideContent } from "@/components/content-wizard/types";
 import type { StructuredContent } from "../types";
 import { normalizeStructuredContent } from "../normalizer/normalize-structured-content";
 
@@ -8,15 +8,6 @@ const DEFAULT_LIMITS = {
   bulletLine: 96,
   notes: 480,
 } as const;
-
-function inferSlideType(i: number, heading: string): SlideType {
-  if (i === 0) return "title";
-  if (/^agenda|^outline|^overview/i.test(heading)) return "section";
-  if (/vs\.|versus|compare/i.test(heading)) return "comparison";
-  if (/\d+%|\$\d|kpi|metric/i.test(heading)) return "data";
-  if (/thank|closing|q\s*&\s*a/i.test(heading)) return "closing";
-  return "content";
-}
 
 /** Minimal SlideContent rows for deck storage / wizard (one row per section). */
 export function slideContentRowsFromStructured(
@@ -48,7 +39,6 @@ export function slideContentRowsFromStructured(
       bullets,
       notes,
       mediaPlaceholders: [],
-      slideType: inferSlideType(i, sec.heading),
       templateMatchScore: Math.max(55, 90 - i * 3),
       limits: { ...DEFAULT_LIMITS },
     } satisfies SlideContent;

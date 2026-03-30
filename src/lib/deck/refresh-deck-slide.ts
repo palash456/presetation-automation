@@ -4,17 +4,31 @@ import {
 } from "@/components/content-wizard/types";
 import type { DeckSlide } from "./types";
 
-export function computeTemplateMatchScore(s: SlideContent): number {
-  let base = 72;
+/** Heuristic shape for template match score only (not stored on rows). */
+function scoreShape(s: SlideContent): "title" | "comparison" | "content" {
+  const titleOnly =
+    s.title.trim().length > 0 &&
+    s.subtitle.trim().length === 0 &&
+    s.bullets.length === 0;
   if (
-    s.slideType === "title" &&
+    titleOnly &&
     s.title.length > 0 &&
     s.title.length <= s.limits.title
   ) {
+    return "title";
+  }
+  if (/vs\.|versus|compare/i.test(s.title)) return "comparison";
+  return "content";
+}
+
+export function computeTemplateMatchScore(s: SlideContent): number {
+  let base = 72;
+  const shape = scoreShape(s);
+  if (shape === "title") {
     base = 90;
   }
-  if (s.slideType === "content" && s.bullets.length >= 2) base += 6;
-  if (s.slideType === "comparison" && s.bullets.length >= 2) base += 4;
+  if (shape === "content" && s.bullets.length >= 2) base += 6;
+  if (shape === "comparison" && s.bullets.length >= 2) base += 4;
   const overflow = slideHasOverflow(s);
   if (
     overflow.title ||
@@ -31,8 +45,9 @@ export function refreshDerivedSlideFields(s: DeckSlide): DeckSlide {
   const ov = slideHasOverflow(s);
   const overflowRisk =
     ov.title || ov.subtitle || ov.bullets || ov.notes;
+  const shape = scoreShape(s);
   const layoutBreakRisk =
-    s.bullets.length > 7 || (s.slideType === "title" && s.bullets.length > 2);
+    s.bullets.length > 7 || (shape === "title" && s.bullets.length > 2);
   return {
     ...s,
     templateMatchScore: computeTemplateMatchScore(s),

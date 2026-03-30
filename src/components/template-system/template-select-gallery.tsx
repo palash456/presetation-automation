@@ -76,7 +76,7 @@ export function TemplateSelectGallery({
               Choose a Template to Customize
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
-              Pick a layout preset first, then edit regions, limits, and
+              Pick a layout slide first, then edit regions, limits, and
               metadata in the same editor you already use.
             </p>
           </header>

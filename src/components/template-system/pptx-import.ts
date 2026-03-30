@@ -450,7 +450,7 @@ function slideDefinitionFromParsed(
       ? boxes.map((b, i) => toRegion(b, slideW, slideH, slideIndex, i))
       : [
           {
-            id: `reg-s${slideIndex}-fallback`,
+            id: `reg-s${slideIndex}-imported`,
             label: "Body",
             kind: "text" as const,
             x: 0.08,
@@ -465,9 +465,6 @@ function slideDefinitionFromParsed(
 
   regions = regions.filter((r) => r.w >= 0.02 && r.h >= 0.02);
 
-  const mappingPresetId =
-    slideIndex === 0 ? ("title-hero" as const) : ("content-classic" as const);
-
   return {
     id: `import-slide-${slideIndex + 1}`,
     name: slideName,
@@ -480,7 +477,6 @@ function slideDefinitionFromParsed(
     designTags: ["Imported", "PPTX"],
     density: "medium",
     allowedElements: ["text", "image", "chart", "shape"],
-    mappingPresetId,
     ...(slidePreviewDataUrl ? { slidePreviewDataUrl } : {}),
   };
 }

@@ -1,12 +1,6 @@
-export type TemplatePresetId =
-  | "title-hero"
-  | "content-classic"
-  | "comparison-split"
-  | "data-focus"
-  | "section-minimal";
-
 export type TemplateAlternative = {
-  id: TemplatePresetId;
+  /** Company pack `SlideTemplateDefinition.id` */
+  id: string;
   name: string;
   matchScore: number;
   reasoning: string;
@@ -17,7 +11,7 @@ export type MappingSlide = {
   title: string;
   subtitle: string;
   bullets: string[];
-  assignedTemplateId: TemplatePresetId;
+  templateSlideId: string;
   locked: boolean;
   matchScore: number;
   reasoning: string;

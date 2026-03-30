@@ -12,7 +12,7 @@ import {
 import { flushSync } from "react-dom";
 import { useDeck } from "@/context/deck-context";
 import { useTemplateLibrary } from "@/context/template-library-context";
-import { companyMappingPresetPool } from "@/components/template-system/company-mock-data";
+import { companyAllowedTemplateSlideIds } from "@/components/template-system/company-mock-data";
 import { createBlankCompanyTemplate } from "@/components/template-system/blank-company-template";
 import type { CompanyTemplate } from "@/components/template-system/company-types";
 import type { AddTemplateSource } from "@/components/template-system/add-template-source";
@@ -93,7 +93,7 @@ export function CreateSetupScreen() {
   const applyUseCompanyTemplate = useCallback(
     (co: CompanyTemplate) => {
       if (co.slideTemplates.length === 0) return;
-      const pool = companyMappingPresetPool(co);
+      const pool = companyAllowedTemplateSlideIds(co);
       const hasConflict =
         deck.slides.length > 0 &&
         deck.activeCompanyTemplateId != null &&
@@ -110,7 +110,7 @@ export function CreateSetupScreen() {
       setActiveCompanyTemplate({
         id: co.id,
         name: co.name,
-        allowedMappingPresetIds: pool.length > 0 ? pool : null,
+        allowedTemplateSlideIds: pool.length > 0 ? pool : null,
       });
       setWizardMeta({ wizardStep: 1 });
       router.push("/create/content");

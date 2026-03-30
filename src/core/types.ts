@@ -1,5 +1,3 @@
-import type { TemplatePresetId } from "@/components/mapping/types";
-
 export type ContentBlock =
   | { type: "paragraph"; text: string }
   | { type: "bullets"; items: string[] }
@@ -39,8 +37,6 @@ export type TemplateSlide = {
   id: string;
   regions: CoreTemplateRegion[];
   rules?: MappingRule[];
-  /** Preserved from imported packs for catalog / legacy UI */
-  mappingPresetId?: TemplatePresetId;
   slidePreviewDataUrl?: string;
 };
 

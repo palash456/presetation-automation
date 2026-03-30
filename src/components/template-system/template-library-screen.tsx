@@ -6,7 +6,7 @@ import { flushSync } from "react-dom";
 import { Layers } from "lucide-react";
 import { useDeck } from "@/context/deck-context";
 import { useTemplateLibrary } from "@/context/template-library-context";
-import { companyMappingPresetPool } from "./company-mock-data";
+import { companyAllowedTemplateSlideIds } from "./company-mock-data";
 import { createBlankCompanyTemplate } from "./blank-company-template";
 import type { CompanyTemplate } from "./company-types";
 import type { AddTemplateSource } from "./add-template-source";
@@ -164,11 +164,11 @@ export function TemplateLibraryScreen() {
       ) {
         return;
       }
-      const pool = companyMappingPresetPool(co);
+      const pool = companyAllowedTemplateSlideIds(co);
       setActiveCompanyTemplate({
         id: co.id,
         name: co.name,
-        allowedMappingPresetIds: pool.length > 0 ? pool : null,
+        allowedTemplateSlideIds: pool.length > 0 ? pool : null,
       });
       setWizardMeta({ wizardStep: 1 });
       router.push("/create/content");

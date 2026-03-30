@@ -46,7 +46,6 @@ export function createBlankSlideDefinition(
     designTags: [],
     density: "medium",
     allowedElements: ["text", "image", "chart", "shape"],
-    mappingPresetId: "title-hero",
   };
 }
 

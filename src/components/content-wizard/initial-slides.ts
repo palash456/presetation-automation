@@ -1,4 +1,4 @@
-import type { SlideContent, SlideType } from "./types";
+import type { SlideContent } from "./types";
 
 const DEFAULT_LIMITS = {
   title: 72,
@@ -6,15 +6,6 @@ const DEFAULT_LIMITS = {
   bulletLine: 96,
   notes: 480,
 } as const;
-
-function inferTypeFromIndex(i: number, firstLine: string): SlideType {
-  if (i === 0) return "title";
-  if (/^agenda|^outline|^overview/i.test(firstLine)) return "section";
-  if (/vs\.|versus|compare/i.test(firstLine)) return "comparison";
-  if (/\d+%|\$\d|kpi|metric/i.test(firstLine)) return "data";
-  if (/thank|q\s*&\s*a|closing/i.test(firstLine)) return "closing";
-  return "content";
-}
 
 /** Build slides from pasted or AI-generated plain text (paragraphs → slides). */
 export function slidesFromPlainText(text: string): SlideContent[] {
@@ -40,10 +31,7 @@ export function slidesFromPlainText(text: string): SlideContent[] {
       l.replace(/^[-•*]\s*/, "").trim(),
     );
 
-    const st = inferTypeFromIndex(i, title);
-    const scoreBase =
-      st === "title" ? 92 : st === "content" ? 78 : st === "data" ? 71 : 74;
-    const score = Math.min(99, scoreBase - i * 2 + (title.length % 7));
+    const score = Math.min(99, 78 - i * 2 + (title.length % 7));
 
     return {
       id: `slide-${i + 1}-${Date.now().toString(36)}`,
@@ -51,15 +39,7 @@ export function slidesFromPlainText(text: string): SlideContent[] {
       subtitle,
       bullets: bullets.length ? bullets : [],
       notes: "",
-      mediaPlaceholders:
-        st === "title"
-          ? ["Hero image"]
-          : st === "data"
-            ? ["Chart or table"]
-            : st === "comparison"
-              ? ["Left visual", "Right visual"]
-              : [],
-      slideType: st,
+      mediaPlaceholders: i === 0 ? ["Hero image"] : ["Supporting visual"],
       templateMatchScore: score,
       limits: { ...DEFAULT_LIMITS },
     };

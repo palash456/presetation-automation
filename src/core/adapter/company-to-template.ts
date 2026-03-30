@@ -1,4 +1,3 @@
-import type { TemplatePresetId } from "@/components/mapping/types";
 import type { CompanyTemplate } from "@/components/template-system/company-types";
 import type { SlideTemplateDefinition } from "@/components/template-system/types";
 import type {
@@ -41,7 +40,6 @@ function slideDefinitionToTemplateSlide(def: SlideTemplateDefinition): TemplateS
   return {
     id: def.id,
     regions,
-    mappingPresetId: def.mappingPresetId as TemplatePresetId | undefined,
     slidePreviewDataUrl: def.slidePreviewDataUrl,
   };
 }

@@ -1,27 +1,14 @@
-import type { SlideType } from "@/components/content-wizard/types";
-import type { TemplatePresetId } from "@/components/mapping/types";
-import { defaultAlternatives } from "@/components/mapping/template-catalog";
+import { buildTemplateSlideAlternatives } from "@/components/mapping/template-slide-alternatives";
 import type { CompanyTemplate } from "@/components/template-system/company-types";
 import { companyTemplateToTemplate } from "@/core/adapter/company-to-template";
+import { mapContentToSlides } from "@/core/mapping/map-content-to-slides";
 import { normalizeStructuredContent } from "@/core/normalizer/normalize-structured-content";
 import { structuredFromPlainText } from "@/core/parser/structured-from-plain-text";
 import { structuredContentCompactFromRows } from "@/core/parser/structured-from-slide-rows";
 import { structuredContentFromDeckSlides } from "@/core/parser/structured-from-deck-slides";
-import { mapContentToSlides } from "@/core/mapping/map-content-to-slides";
 import type { SlideModel, StructuredContent, Template } from "@/core/types";
 import type { DeckSlide } from "./types";
 import { refreshDerivedSlideFields } from "./refresh-deck-slide";
-
-function presetToSlideType(id: TemplatePresetId): SlideType {
-  const m: Record<TemplatePresetId, SlideType> = {
-    "title-hero": "title",
-    "content-classic": "content",
-    "comparison-split": "comparison",
-    "data-focus": "data",
-    "section-minimal": "section",
-  };
-  return m[id] ?? "content";
-}
 
 const DEFAULT_LIMITS = {
   title: 72,
@@ -30,11 +17,19 @@ const DEFAULT_LIMITS = {
   notes: 480,
 } as const;
 
+export type SlideBuildResult = {
+  models: SlideModel[];
+  template: Template;
+  slides: DeckSlide[];
+  /** Normalized structured outline used for this build (persist on deck). */
+  structured: StructuredContent;
+};
+
 function modelToDeckSlide(
   model: SlideModel,
   template: Template,
+  company: CompanyTemplate,
   index: number,
-  pool: TemplatePresetId[] | null,
   existingId?: string,
 ): DeckSlide {
   const ts = template.slides.find((s) => s.id === model.templateSlideId);
@@ -62,11 +57,6 @@ function modelToDeckSlide(
     }
   }
 
-  const assigned: TemplatePresetId =
-    ts?.mappingPresetId && (!pool || pool.length === 0 || pool.includes(ts.mappingPresetId))
-      ? ts.mappingPresetId
-      : pool?.[0] ?? ts?.mappingPresetId ?? "content-classic";
-
   const base = {
     id:
       existingId?.trim() ||
@@ -76,38 +66,34 @@ function modelToDeckSlide(
     bullets: bodyLines,
     notes: "",
     mediaPlaceholders: [] as string[],
-    slideType: presetToSlideType(assigned),
     templateMatchScore: 82,
     limits: { ...DEFAULT_LIMITS },
   };
 
   return refreshDerivedSlideFields({
     ...base,
-    assignedTemplateId: assigned,
+    templateSlideId: model.templateSlideId,
     locked: false,
     matchScore: 82,
-    reasoning: "Mapped with template-first engine.",
+    reasoning: "Mapped with template-first engine (layout id from pickBestTemplateSlide).",
     overflowRisk:
       title.length > DEFAULT_LIMITS.title ||
       subtitle.length > DEFAULT_LIMITS.subtitle ||
       bodyLines.some((l) => l.length > DEFAULT_LIMITS.bulletLine),
     layoutBreakRisk: bodyLines.length > 6,
-    alternatives: defaultAlternatives(assigned, undefined, pool),
+    alternatives: buildTemplateSlideAlternatives(
+      company,
+      model.templateSlideId,
+      null,
+    ),
   });
-}
-
-function mappingPoolFromCompany(company: CompanyTemplate): TemplatePresetId[] | null {
-  const pool = company.slideTemplates
-    .map((s) => s.mappingPresetId)
-    .filter((x): x is TemplatePresetId => Boolean(x));
-  return pool.length > 0 ? [...new Set(pool)] : null;
 }
 
 /** Plain text paste / AI intro → structured (avoids double-expansion from pre-split rows). */
 export function buildSlideModelsFromPlainText(
   plainText: string,
   company: CompanyTemplate,
-): { models: SlideModel[]; template: Template; slides: DeckSlide[] } {
+): SlideBuildResult {
   const structured = structuredFromPlainText(plainText);
   return buildSlideModelsFromStructured(structured, company);
 }
@@ -116,7 +102,7 @@ export function buildSlideModelsFromPlainText(
 export function buildSlideModelsFromContentRows(
   rows: import("@/components/content-wizard/types").SlideContent[],
   company: CompanyTemplate,
-): { models: SlideModel[]; template: Template; slides: DeckSlide[] } {
+): SlideBuildResult {
   const structured = structuredContentCompactFromRows(rows);
   return buildSlideModelsFromStructured(structured, company);
 }
@@ -124,27 +110,36 @@ export function buildSlideModelsFromContentRows(
 export function buildSlideModelsFromStructured(
   structured: StructuredContent,
   company: CompanyTemplate,
-): { models: SlideModel[]; template: Template; slides: DeckSlide[] } {
+): SlideBuildResult {
   const normalized = normalizeStructuredContent(structured);
   const template = companyTemplateToTemplate(company);
   const models = mapContentToSlides(normalized, template, company.id);
-  const uniq = mappingPoolFromCompany(company);
-  const slides = models.map((m, i) => modelToDeckSlide(m, template, i, uniq));
-  return { models, template, slides };
+  const slides = models.map((m, i) =>
+    modelToDeckSlide(m, template, company, i),
+  );
+  return { models, template, slides, structured: normalized };
 }
 
-/** Rebuild models from existing deck slides (e.g. after template switch). */
+/**
+ * Rebuild from persisted structured outline when section count matches rows;
+ * otherwise derive from flat slides (transitional).
+ */
 export function rebuildSlideModelsFromDeckSlides(
   existingSlides: DeckSlide[],
   company: CompanyTemplate,
-): { models: SlideModel[]; template: Template; slides: DeckSlide[] } {
-  const structured = structuredContentFromDeckSlides(existingSlides);
-  const normalized = normalizeStructuredContent(structured);
+  structuredHint?: StructuredContent | null,
+): SlideBuildResult {
+  const useHint =
+    structuredHint != null &&
+    structuredHint.sections.length === existingSlides.length;
+  const baseStructured = useHint
+    ? structuredHint
+    : structuredContentFromDeckSlides(existingSlides);
+  const normalized = normalizeStructuredContent(baseStructured);
   const template = companyTemplateToTemplate(company);
   const models = mapContentToSlides(normalized, template, company.id);
-  const uniq = mappingPoolFromCompany(company);
   const slides = models.map((m, i) =>
-    modelToDeckSlide(m, template, i, uniq, existingSlides[i]?.id),
+    modelToDeckSlide(m, template, company, i, existingSlides[i]?.id),
   );
-  return { models, template, slides };
+  return { models, template, slides, structured: normalized };
 }

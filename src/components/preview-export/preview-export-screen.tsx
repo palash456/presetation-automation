@@ -43,7 +43,11 @@ export function PreviewExportScreen() {
       deck.activeCompanyTemplateId != null
         ? lib.find((c) => c.id === deck.activeCompanyTemplateId) ?? null
         : null;
-    return getExportEditorSlidesForDeck(deck, company);
+    try {
+      return getExportEditorSlidesForDeck(deck, company);
+    } catch {
+      return [];
+    }
   }, [deck]);
 
   const [index, setIndex] = useState(0);

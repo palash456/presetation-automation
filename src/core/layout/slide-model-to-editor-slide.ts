@@ -37,7 +37,7 @@ export function slideModelToEditorSlide(
 ): EditorSlide {
   const ts = findTemplateSlide(template, model.templateSlideId);
   if (!ts) {
-    return emptyEditorSlide(slideIndex);
+    throw new Error("Template required");
   }
 
   const id = `es-slide-${slideIndex}`;
@@ -91,16 +91,6 @@ export function slideModelToEditorSlide(
     ...(ts.slidePreviewDataUrl
       ? { backgroundImageUrl: ts.slidePreviewDataUrl }
       : {}),
-  };
-}
-
-function emptyEditorSlide(i: number): EditorSlide {
-  return {
-    id: `es-empty-${i}`,
-    padding: 48,
-    spacing: 16,
-    align: "left",
-    elements: [],
   };
 }
 

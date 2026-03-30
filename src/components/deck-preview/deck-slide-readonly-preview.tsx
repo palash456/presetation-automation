@@ -31,7 +31,7 @@ type DeckSlideReadonlyPreviewProps = {
 
 /**
  * Renders one slide from the same `EditorSlide` model as the editor (template metadata + content).
- * Used in Map and Preview so the UI matches the selected template JSON, not hardcoded presets.
+ * Used in Map and Preview so the UI matches the selected template JSON from the pack.
  */
 export function DeckSlideReadonlyPreview({
   slide,

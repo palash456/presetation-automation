@@ -23,12 +23,18 @@ export function deckWithSlideModelsHydrated(doc: DeckDocument): {
     return { deck: doc, changed: false };
   }
 
-  const { models, slides } = rebuildSlideModelsFromDeckSlides(
+  const rebuilt = rebuildSlideModelsFromDeckSlides(
     doc.slides,
     company,
+    doc.structuredContent,
   );
   return {
-    deck: { ...doc, slides, slideModels: models },
+    deck: {
+      ...doc,
+      slides: rebuilt.slides,
+      slideModels: rebuilt.models,
+      structuredContent: rebuilt.structured,
+    },
     changed: true,
   };
 }

@@ -1,6 +1,3 @@
-import { defaultAlternatives } from "./template-catalog";
-import type { MappingSlide, TemplatePresetId } from "./types";
-
 export const REASONING_POOL = [
   "Layout rails align with your bullet depth and title length.",
   "Template reserves space for the media slots implied by structure.",
@@ -10,18 +7,21 @@ export const REASONING_POOL = [
   "Section divider keeps cognitive load low for chapter transitions.",
 ] as const;
 
-export function randomReasoning(): string {
-  return REASONING_POOL[Math.floor(Math.random() * REASONING_POOL.length)]!;
+/** Deterministic copy — no random demo jitter. */
+export function reasoningAt(index: number): string {
+  const i =
+    ((index % REASONING_POOL.length) + REASONING_POOL.length) %
+    REASONING_POOL.length;
+  return REASONING_POOL[i]!;
 }
 
-export function jitterScore(base: number): number {
-  const n = base + Math.floor(Math.random() * 9) - 4;
+/** Stable score variation from a string salt (e.g. slide or layout id). */
+export function scoreFromSalt(base: number, salt: string): number {
+  let h = 0;
+  for (let i = 0; i < salt.length; i++) {
+    h = (h * 31 + salt.charCodeAt(i)) | 0;
+  }
+  const jitter = (Math.abs(h) % 9) - 4;
+  const n = base + jitter;
   return Math.min(99, Math.max(52, n));
-}
-
-export function remapAlternatives(
-  current: TemplatePresetId,
-  pool?: TemplatePresetId[] | null,
-): MappingSlide["alternatives"] {
-  return defaultAlternatives(current, undefined, pool);
 }

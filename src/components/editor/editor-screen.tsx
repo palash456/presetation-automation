@@ -72,7 +72,7 @@ export function EditorScreen() {
   );
 
   const mappingSig = useMemo(
-    () => deck.slides.map((s) => `${s.id}:${s.assignedTemplateId}`).join("|"),
+    () => deck.slides.map((s) => `${s.id}:${s.templateSlideId}`).join("|"),
     [deck.slides],
   );
 
@@ -83,6 +83,7 @@ export function EditorScreen() {
     const id = requestAnimationFrame(() => {
       if (deck.slides.length === 0) {
         setSlides([]);
+        pushEditorSlides([]);
         return;
       }
       const lib = loadTemplateLibrary();
@@ -105,9 +106,22 @@ export function EditorScreen() {
       const shouldRebuild =
         !lenOk || mappingChanged || companyChanged;
 
-      const initial = shouldRebuild
-        ? buildEditorSlidesFromDeck(deck.slides, company)
-        : deepClone(deck.editorSlides!);
+      const canBuildFromModels =
+        company &&
+        company.slideTemplates.length > 0;
+
+      let initial: EditorSlide[];
+      if (!shouldRebuild) {
+        initial = deepClone(deck.editorSlides!);
+      } else if (!canBuildFromModels) {
+        initial = [];
+      } else {
+        try {
+          initial = buildEditorSlidesFromDeck(deck, company);
+        } catch {
+          initial = [];
+        }
+      }
 
       setActiveIndex((i) => Math.min(i, Math.max(0, initial.length - 1)));
       setSlides(initial);
@@ -115,7 +129,10 @@ export function EditorScreen() {
       setFuture([]);
       setSelectedElementId(null);
 
-      if (shouldRebuild) {
+      if (
+        shouldRebuild &&
+        (initial.length === deck.slides.length || deck.slides.length === 0)
+      ) {
         pushEditorSlides(initial);
       }
     });

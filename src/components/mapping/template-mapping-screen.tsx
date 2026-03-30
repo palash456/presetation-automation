@@ -16,14 +16,19 @@ import { useDeck } from "@/context/deck-context";
 import { DeckSlideReadonlyPreview } from "@/components/deck-preview/deck-slide-readonly-preview";
 import { loadTemplateLibrary } from "@/components/template-system/template-library-storage";
 import { buildEditorSlideForDeckIndex } from "@/lib/deck/helpers";
-import { ALL_TEMPLATE_IDS, TEMPLATE_CATALOG } from "./template-catalog";
-import {
-  jitterScore,
-  randomReasoning,
-  remapAlternatives,
-} from "./mock-slides";
+import { reasoningAt, scoreFromSalt } from "./mock-slides";
+import { remapTemplateSlideAlternatives } from "./template-slide-alternatives";
 import type { CompanyTemplate } from "@/components/template-system/company-types";
-import type { TemplateAlternative, TemplatePresetId } from "./types";
+import type { TemplateAlternative } from "./types";
+
+function slideLayoutLabel(
+  company: CompanyTemplate | null,
+  templateSlideId: string,
+): string {
+  if (!company) return templateSlideId.trim() || "—";
+  const d = company.slideTemplates.find((t) => t.id === templateSlideId);
+  return (d?.name ?? templateSlideId.trim()) || "—";
+}
 
 function cn(...p: (string | false | undefined)[]) {
   return p.filter(Boolean).join(" ");
@@ -55,18 +60,9 @@ function MatchScoreRing({ score }: { score: number }) {
 export function TemplateMappingScreen() {
   const { deck, updateDeckSlide } = useDeck();
   const slides = deck.slides;
-  const mappingPool = deck.allowedMappingPresetIds;
-  const templateChoices = useMemo(() => {
-    if (mappingPool && mappingPool.length > 0) return mappingPool;
-    return ALL_TEMPLATE_IDS;
-  }, [mappingPool]);
+  const mappingPool = deck.allowedTemplateSlideIds;
 
-  const outsideActivePool = useMemo(() => {
-    if (!mappingPool || mappingPool.length === 0) return false;
-    return slides.some((s) => !mappingPool.includes(s.assignedTemplateId));
-  }, [slides, mappingPool]);
-
-  const anyClosestFallback = useMemo(
+  const anyClosestAlternativeNotice = useMemo(
     () =>
       slides.some((s) =>
         s.reasoning.includes("closest alternative"),
@@ -94,14 +90,33 @@ export function TemplateMappingScreen() {
     return lib.find((c) => c.id === deck.activeCompanyTemplateId) ?? null;
   }, [deck.activeCompanyTemplateId]);
 
+  const templateChoices = useMemo(() => {
+    if (!activeCompany?.slideTemplates.length) return [];
+    let defs = activeCompany.slideTemplates;
+    if (mappingPool && mappingPool.length > 0) {
+      const allow = new Set(mappingPool);
+      defs = defs.filter((d) => allow.has(d.id));
+    }
+    return defs;
+  }, [activeCompany, mappingPool]);
+
+  const outsideActivePool = useMemo(() => {
+    if (!mappingPool || mappingPool.length === 0) return false;
+    return slides.some((s) => !mappingPool.includes(s.templateSlideId));
+  }, [slides, mappingPool]);
+
   const mappingPreviewSlide = useMemo(() => {
-    if (!active) return null;
+    if (!active || !activeCompany?.slideTemplates.length) return null;
     const idx = slides.findIndex((s) => s.id === active.id);
     if (idx < 0) return null;
-    return buildEditorSlideForDeckIndex(deck, idx, activeCompany);
+    try {
+      return buildEditorSlideForDeckIndex(deck, idx, activeCompany);
+    } catch {
+      return null;
+    }
   }, [
     active,
-    active?.assignedTemplateId,
+    active?.templateSlideId,
     active?.bullets,
     active?.id,
     active?.subtitle,
@@ -117,23 +132,36 @@ export function TemplateMappingScreen() {
   }, []);
 
   const applyTemplate = useCallback(
-    (templateId: TemplatePresetId, alt?: TemplateAlternative) => {
+    (templateSlideId: string, alt?: TemplateAlternative) => {
       const cur = resolvedSlideId
         ? slides.find((s) => s.id === resolvedSlideId)
         : undefined;
       if (!cur || cur.locked) return;
-      const score = alt?.matchScore ?? jitterScore(cur.matchScore);
-      const reasoning = alt?.reasoning ?? randomReasoning();
+      const score =
+        alt?.matchScore ??
+        scoreFromSalt(cur.matchScore, `${cur.id}:${templateSlideId}`);
+      const reasoning = alt?.reasoning ?? reasoningAt(cur.id.length);
       updateDeckSlide(cur.id, {
-        assignedTemplateId: templateId,
+        templateSlideId,
         matchScore: score,
         reasoning,
-        alternatives: remapAlternatives(templateId, deck.allowedMappingPresetIds),
+        alternatives: remapTemplateSlideAlternatives(
+          activeCompany,
+          templateSlideId,
+          deck.allowedTemplateSlideIds,
+        ),
       });
       setCarouselIndex(0);
       bumpPreview();
     },
-    [deck.allowedMappingPresetIds, resolvedSlideId, bumpPreview, slides, updateDeckSlide],
+    [
+      activeCompany,
+      deck.allowedTemplateSlideIds,
+      resolvedSlideId,
+      bumpPreview,
+      slides,
+      updateDeckSlide,
+    ],
   );
 
   const setLocked = useCallback(
@@ -153,16 +181,24 @@ export function TemplateMappingScreen() {
       : undefined;
     if (!cur || cur.locked) return;
     updateDeckSlide(cur.id, {
-      matchScore: jitterScore(cur.matchScore),
-      reasoning: randomReasoning(),
-      alternatives: remapAlternatives(
-        cur.assignedTemplateId,
-        deck.allowedMappingPresetIds,
+      matchScore: scoreFromSalt(cur.matchScore, `rerun:${cur.id}`),
+      reasoning: reasoningAt(cur.id.length + 1),
+      alternatives: remapTemplateSlideAlternatives(
+        activeCompany,
+        cur.templateSlideId,
+        deck.allowedTemplateSlideIds,
       ),
     });
     setCarouselIndex(0);
     bumpPreview();
-  }, [deck.allowedMappingPresetIds, resolvedSlideId, bumpPreview, slides, updateDeckSlide]);
+  }, [
+    activeCompany,
+    deck.allowedTemplateSlideIds,
+    resolvedSlideId,
+    bumpPreview,
+    slides,
+    updateDeckSlide,
+  ]);
 
   const alts = active?.alternatives ?? [];
   const safeCarousel = alts.length ? carouselIndex % alts.length : 0;
@@ -224,7 +260,7 @@ export function TemplateMappingScreen() {
         mappingPool.length > 0 &&
         deck.activeCompanyTemplateName) ||
       outsideActivePool ||
-      anyClosestFallback ? (
+      anyClosestAlternativeNotice ? (
         <div
           className="shrink-0 space-y-1 border-b border-[var(--border-subtle)] bg-[var(--accent-muted)]/35 px-4 py-2 text-xs leading-relaxed text-foreground/90"
           role="status"
@@ -240,7 +276,7 @@ export function TemplateMappingScreen() {
                 templates in this style.
               </p>
             )}
-          {anyClosestFallback && (
+          {anyClosestAlternativeNotice && (
             <p className="flex items-start gap-2 text-amber-950/90 dark:text-amber-100/95">
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
               <span>
@@ -277,7 +313,7 @@ export function TemplateMappingScreen() {
                 s.layoutBreakRisk ||
                 (mappingPool &&
                   mappingPool.length > 0 &&
-                  !mappingPool.includes(s.assignedTemplateId));
+                  !mappingPool.includes(s.templateSlideId));
               return (
                 <li key={s.id} className="mb-2">
                   <button
@@ -317,7 +353,7 @@ export function TemplateMappingScreen() {
                       {s.title}
                     </p>
                     <p className="mt-1 truncate text-[11px] text-[var(--muted)]">
-                      {TEMPLATE_CATALOG[s.assignedTemplateId].shortLabel} ·{" "}
+                      {slideLayoutLabel(activeCompany, s.templateSlideId)} ·{" "}
                       {s.matchScore}%
                     </p>
                   </button>
@@ -356,7 +392,7 @@ export function TemplateMappingScreen() {
                 Selected template
               </p>
               <p className="mt-1 text-lg font-semibold leading-tight">
-                {TEMPLATE_CATALOG[active.assignedTemplateId].name}
+                {slideLayoutLabel(activeCompany, active.templateSlideId)}
               </p>
               <div className="mt-4">
                 <MatchScoreRing score={active.matchScore} />
@@ -460,16 +496,14 @@ export function TemplateMappingScreen() {
                   Change template
                 </label>
                 <select
-                  value={active.assignedTemplateId}
+                  value={active.templateSlideId}
                   disabled={active.locked}
-                  onChange={(e) =>
-                    applyTemplate(e.target.value as TemplatePresetId)
-                  }
+                  onChange={(e) => applyTemplate(e.target.value)}
                   className="mt-1.5 h-10 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] px-3 text-sm focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-muted)] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {templateChoices.map((id) => (
-                    <option key={id} value={id}>
-                      {TEMPLATE_CATALOG[id].name}
+                  {templateChoices.map((def) => (
+                    <option key={def.id} value={def.id}>
+                      {def.name}
                     </option>
                   ))}
                 </select>
