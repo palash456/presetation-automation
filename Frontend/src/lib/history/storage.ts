@@ -6,6 +6,9 @@ const HISTORY_KEY = "present-presentation-history-v1";
 
 const LOCAL_DRAFT_ID = "local-draft";
 
+/** Stable empty list for snapshots and empty reads (do not mutate). */
+export const EMPTY_PRESENTATION_HISTORY: PresentationHistory[] = [];
+
 function isHistoryEntry(v: unknown): v is PresentationHistory {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
@@ -18,17 +21,43 @@ function isHistoryEntry(v: unknown): v is PresentationHistory {
   );
 }
 
-export function loadPresentationHistory(): PresentationHistory[] {
-  if (typeof window === "undefined") return [];
+function parsePresentationHistoryRaw(raw: string): PresentationHistory[] {
+  if (!raw) return EMPTY_PRESENTATION_HISTORY;
   try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(parsed)) return EMPTY_PRESENTATION_HISTORY;
     return parsed.filter(isHistoryEntry);
   } catch {
-    return [];
+    return EMPTY_PRESENTATION_HISTORY;
   }
+}
+
+let listSnapshotCache: { raw: string; list: PresentationHistory[] } | undefined;
+
+/**
+ * Referentially stable while `localStorage` raw value is unchanged — required for
+ * `useSyncExternalStore` getSnapshot (Object.is equality between renders).
+ */
+export function getPresentationHistoryListSnapshot(): PresentationHistory[] {
+  if (typeof window === "undefined") return EMPTY_PRESENTATION_HISTORY;
+  const raw = localStorage.getItem(HISTORY_KEY) ?? "";
+  if (listSnapshotCache?.raw === raw) return listSnapshotCache.list;
+  const list = parsePresentationHistoryRaw(raw);
+  listSnapshotCache = { raw, list };
+  return list;
+}
+
+export function getPresentationHistoryEntrySnapshot(
+  id: string,
+): PresentationHistory | undefined {
+  if (!id) return undefined;
+  return getPresentationHistoryListSnapshot().find((p) => p.id === id);
+}
+
+export function loadPresentationHistory(): PresentationHistory[] {
+  if (typeof window === "undefined") return EMPTY_PRESENTATION_HISTORY;
+  const raw = localStorage.getItem(HISTORY_KEY) ?? "";
+  return parsePresentationHistoryRaw(raw);
 }
 
 export function savePresentationHistory(items: PresentationHistory[]): void {

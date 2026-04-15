@@ -3,15 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "dev": "next dev -p 4000",
+    "start": "next start -p 4000",
     "lint": "eslint"
   },
   "dependencies": {
     "jszip": "^3.10.1",
     "lucide-react": "^1.0.1",
-    "next": "16.2.1",
+    "next": "^16.2.3",
     "pptxgenjs": "^4.0.1",
     "react": "19.2.4",
     "react-dom": "19.2.4"

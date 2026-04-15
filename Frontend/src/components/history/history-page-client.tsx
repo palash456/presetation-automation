@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
 import { HISTORY_CHANGED_EVENT } from "@/lib/history/history-events";
-import { loadPresentationHistory } from "@/lib/history/storage";
+import {
+  EMPTY_PRESENTATION_HISTORY,
+  getPresentationHistoryListSnapshot,
+} from "@/lib/history/storage";
 import { EmptyState } from "@/components/shell/empty-state";
 import { HistoryProjectCards } from "./history-project-cards";
 
@@ -23,8 +26,8 @@ export function HistoryPageClient() {
         window.removeEventListener("storage", onStorage);
       };
     },
-    () => loadPresentationHistory(),
-    () => [],
+    () => getPresentationHistoryListSnapshot(),
+    () => EMPTY_PRESENTATION_HISTORY,
   );
 
   const hasProjects = projects.length > 0;

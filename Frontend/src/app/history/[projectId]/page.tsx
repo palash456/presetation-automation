@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { ProjectTimeline } from "@/components/history/project-timeline";
 import { HISTORY_CHANGED_EVENT } from "@/lib/history/history-events";
-import { getPresentationHistoryById } from "@/lib/history/storage";
+import { getPresentationHistoryEntrySnapshot } from "@/lib/history/storage";
 
 const HISTORY_STORAGE_KEY = "present-presentation-history-v1";
 
@@ -32,7 +32,9 @@ export default function HistoryProjectPage() {
       };
     },
     () =>
-      projectId ? (getPresentationHistoryById(projectId) ?? null) : null,
+      projectId
+        ? (getPresentationHistoryEntrySnapshot(projectId) ?? null)
+        : null,
     () => null,
   );
 
