@@ -304,8 +304,10 @@ export function TemplateLibraryScreen() {
         return;
       }
       try {
-        const { pptxFileToCompanyTemplate } = await import("./pptx-import");
-        const pack = await pptxFileToCompanyTemplate(f);
+        const { uploadPptxAndBuildCompanyTemplate } = await import(
+          "@/lib/template-api/upload-template"
+        );
+        const pack = await uploadPptxAndBuildCompanyTemplate(f);
         upsertCompany(pack);
         router.push(`/templates?customize=${encodeURIComponent(pack.id)}`);
       } catch (err) {

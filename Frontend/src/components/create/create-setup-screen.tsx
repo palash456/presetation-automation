@@ -204,10 +204,10 @@ export function CreateSetupScreen() {
         return;
       }
       try {
-        const { pptxFileToCompanyTemplate } = await import(
-          "@/components/template-system/pptx-import"
+        const { uploadPptxAndBuildCompanyTemplate } = await import(
+          "@/lib/template-api/upload-template"
         );
-        const pack = await pptxFileToCompanyTemplate(f);
+        const pack = await uploadPptxAndBuildCompanyTemplate(f);
         upsertCompany(pack);
         router.push(`/templates?customize=${encodeURIComponent(pack.id)}`);
       } catch (err) {
